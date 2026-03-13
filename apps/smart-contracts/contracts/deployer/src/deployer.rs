@@ -23,7 +23,6 @@ pub struct DeployAllParams {
     pub vault_salt: BytesN<32>,
     pub token_name: String,
     pub token_symbol: String,
-    pub escrow_id: String,
     pub decimal: u32,
     pub escrow_contract: Address,
     pub vault_admin: Address,
@@ -75,7 +74,7 @@ impl DeployerContract {
     /// * `salt` - Unique salt for deterministic address derivation
     /// * `name` - Token name
     /// * `symbol` - Token symbol
-    /// * `escrow_id` - Escrow contract ID (immutable after init)
+    /// * `escrow_contract` - Escrow contract address (immutable after init)
     /// * `decimal` - Token decimals (max 18)
     /// * `mint_authority` - Address authorized to mint tokens
     pub fn deploy_participation_token(
@@ -83,7 +82,7 @@ impl DeployerContract {
         salt: BytesN<32>,
         name: String,
         symbol: String,
-        escrow_id: String,
+        escrow_contract: Address,
         decimal: u32,
         mint_authority: Address,
     ) -> Address {
@@ -99,7 +98,7 @@ impl DeployerContract {
         let constructor_args: Vec<Val> = (
             name,
             symbol,
-            escrow_id,
+            escrow_contract,
             decimal,
             mint_authority,
         )
@@ -201,9 +200,8 @@ impl DeployerContract {
     /// 3. Wire token-sale → participation-token via `set_token` (deployer is temp admin)
     /// 4. Transfer token-sale admin to params.token_sale_admin via `set_admin`
     /// 5. Deploy vault-contract pointing to the participation-token
-    pub fn deploy_all(env: Env, params: DeployAllParams) -> DeployedContracts {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-        admin.require_auth();
+    pub fn deploy_all(env: Env, signer: Address, params: DeployAllParams) -> DeployedContracts {
+        signer.require_auth();
 
         let participation_token_wasm: BytesN<32> = env
             .storage()
@@ -226,7 +224,7 @@ impl DeployerContract {
         // Step 1: Deploy token-sale with deployer as temporary admin
         // (allows deployer to call set_token and set_admin in steps 3-4)
         let token_sale_args: Vec<Val> = (
-            params.escrow_contract,
+            params.escrow_contract.clone(),
             deployer_addr.clone(),
             params.hard_cap,
             params.max_per_investor,
@@ -241,7 +239,7 @@ impl DeployerContract {
         let participation_token_args: Vec<Val> = (
             params.token_name,
             params.token_symbol,
-            params.escrow_id,
+            params.escrow_contract,
             params.decimal,
             token_sale_addr.clone(),
         )
